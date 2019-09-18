@@ -3,8 +3,6 @@ package service
 import (
 	"fmt"
 	"net/http"
-	"strconv"
-	"math/rand"
 	"encoding/json"
 	"bytes"
 	"io/ioutil"
@@ -28,6 +26,7 @@ type OrderResult struct{
 
 type ClickValue struct {
 	EntryID int
+	DistrictID int
 }
 
 type ClickResult struct {
@@ -37,6 +36,7 @@ type ClickResult struct {
 
 type ReceiptValue struct {
 	OrderID int
+	DistrictID int
 	Price   []struct {
 		Payment string
 		Value   float64
@@ -50,6 +50,7 @@ type ReceiptResult struct {
 
 type DeliveryValue struct {
 	OrderID int
+	DistrictID int
 }
 
 type DeliveryResult struct {
@@ -57,14 +58,9 @@ type DeliveryResult struct {
 	Order_id int
 }
 
-func (r Request) AddOrder(price float64) *OrderResult{
-	districts, err := strconv.Atoi(os.Getenv("DISTRICTS"))
-	if err != nil {
-		fmt.Println(err)
-		return nil
-	}
 
-	ord := OrderValue{rand.Intn(districts)+1, []float64{price}}
+func (r Request) AddOrder(price float64, districtID int) *OrderResult{
+	ord := OrderValue{districtID, []float64{price}}
 
 	jsonBody, err := json.Marshal(ord)
 	if err != nil {
@@ -99,9 +95,10 @@ func (r Request) AddOrder(price float64) *OrderResult{
 	return &o
 }
 
-func (r Request) Pay(orderId int, price float64) bool{
+func (r Request) Pay(orderId int, districtId int, price float64) bool{
 	message := map[string]interface{} {
 		"orderId":orderId,
+		"districtID":districtId,
 		"price": []map[string]interface{}{{"payment":"cash", "value": price}},
 	}
 	jsonBody, err := json.Marshal(message)
@@ -140,8 +137,8 @@ func (r Request) Pay(orderId int, price float64) bool{
 	return true
 }
 
-func (r Request) Click(entryId int) string {
-	cv := ClickValue{entryId}
+func (r Request) Click(entryId int, districtID int) string {
+	cv := ClickValue{entryId, districtID}
 	jsonBody, err := json.Marshal(cv)
 	if err != nil {
 		fmt.Println(err)
@@ -174,8 +171,8 @@ func (r Request) Click(entryId int) string {
 	return c.Status
 }
 
-func (r Request) Delivered(orderId int) bool {
-	dv := DeliveryValue{orderId}
+func (r Request) Delivered(orderId int, districtID int) bool {
+	dv := DeliveryValue{orderId, districtID}
 
 	jsonBody, err := json.Marshal(dv)
 	if err != nil {
