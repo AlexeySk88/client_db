@@ -46,7 +46,7 @@ func main() {
 			DistrictID: rand.Intn(districts) + 1,
 			Price:      float64(rand.Intn(20)*10 + 400),
 		}
-		doOrder(request, orderChan, order)
+		go doOrder(request, orderChan, order)
 	}
 	for i := 0; i < count; i++ {
 		oc := <-orderChan
@@ -54,11 +54,15 @@ func main() {
 	}
 	for i := 0; i < count; i++ {
 		pc := <-payChan
-		doClick(request, clickChan, pc)
+		go doClick(request, clickChan, pc)
 	}
 	for i := 0; i < count; i++ {
 		cc := <-clickChan
-		doDelivery(request, deliveryChan, cc)
+		go doDelivery(request, deliveryChan, cc)
+	}
+	for i := 0; i < count; i++ {
+		<-deliveryChan
+		fmt.Println(i)
 	}
 	fmt.Println("the number of orders -", count)
 	fmt.Println("success", time.Now().Sub(start))
