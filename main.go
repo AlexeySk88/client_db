@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
-	"sync"
 	"time"
 )
 
@@ -19,7 +18,7 @@ const (
 	query     string = "POST"
 	districts int    = 5
 	count     int    = 1000
-	chunk int = 1024
+	chunk int = 20
 )
 
 func main() {
@@ -35,63 +34,78 @@ func main() {
 		Port:   port,
 		Query:  query,
 	}
+	arrayOrder := [count]orders.Order{}
 
-	var wg sync.WaitGroup
-	wg.Add(chunk)
-
-	start := time.Now()
+	newOrderChan := make(chan orders.Order, chunk)
 	orderChan := make(chan orders.Order, chunk)
 	payChan := make(chan orders.Order, chunk)
 	clickChan := make(chan orders.Order, chunk)
 	deliveryChan := make(chan bool, chunk)
 
 	for i := 0; i < count; i++ {
+		go doOrder(request, orderChan, newOrderChan)
+		go doPay(request, payChan, orderChan)
+		go doClick(request, clickChan, payChan)
+		go doDelivery(request, deliveryChan, clickChan)
+	}
+
+	start := time.Now()
+	for i := 0; i < count; i++ {
 		rand.Seed(time.Now().UnixNano())
-		//time.Sleep(5 * time.Millisecond)
-		order := orders.Order{
+		arrayOrder[i] = orders.Order{
 			DistrictID: rand.Intn(districts) + 1,
 			Price:      float64(rand.Intn(20)*10 + 400),
 		}
-		go doOrder(request, orderChan, order)
-		go doPay(request, payChan, <-orderChan)
-		go doClick(request, clickChan, <-payChan)
-		go doDelivery(request, deliveryChan, <-clickChan)
+		fmt.Println(i)
+	}
+
+	for _, order := range arrayOrder {
+		newOrderChan <- order
+	}
+
+	for i := 0; i < count; i++ {
 		fmt.Println(i)
 		<-deliveryChan
 	}
+
+
 
 	fmt.Println("the number of orders -", count)
 	fmt.Println("success", time.Now().Sub(start))
 }
 
-func doOrder(request service.Request, ch chan orders.Order, order orders.Order) {
-	res := request.AddOrder(order)
+func doOrder(request service.Request, ch chan orders.Order, order chan orders.Order) {
+	curOrder := <-order
+	res := request.AddOrder(curOrder)
 	ch <- orders.Order{
 		OrderID: res.Order_id,
-		DistrictID: order.DistrictID,
-		Price: order.Price,
+		DistrictID: curOrder.DistrictID,
+		Price: curOrder.Price,
 		EntryIDs: res.Entry_id,
 	}
 }
 
-func doPay(request service.Request, ch chan orders.Order, order orders.Order) {
-	request.Pay(order)
-	ch <- order
+func doPay(request service.Request, ch chan orders.Order, order chan orders.Order) {
+	o := <- order
+	request.Pay(o)
+	ch <- o
 }
 
-func doClick(request service.Request, ch chan orders.Order, order orders.Order) {
-	for _, v := range order.EntryIDs {
+func doClick(request service.Request, ch chan orders.Order, order chan orders.Order) {
+	o := <- order
+	for _, v := range o.EntryIDs {
 		for {
-			click := request.Click(v, order.DistrictID)
+			click := request.Click(v, o.DistrictID)
 			if click == "done" {
 				break
 			}
 		}
 	}
-	ch <- order
+	ch <- o
 }
 
-func doDelivery(request service.Request, ch chan bool, order orders.Order) {
-	request.Delivered(order)
+func doDelivery(request service.Request, ch chan bool, order chan orders.Order) {
+	o := <- order
+	request.Delivered(o)
 	ch <- true
 }
