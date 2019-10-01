@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"client_db/orders"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -60,8 +61,8 @@ type DeliveryResult struct {
 	Order_id int
 }
 
-func (r Request) AddOrder(price float64, districtID int) *OrderResult {
-	ord := OrderValue{districtID, []float64{price}}
+func (r Request) AddOrder(order orders.Order) *OrderResult {
+	ord := OrderValue{order.DistrictID, []float64{order.Price}}
 
 	jsonBody, err := json.Marshal(ord)
 	if err != nil {
@@ -96,11 +97,11 @@ func (r Request) AddOrder(price float64, districtID int) *OrderResult {
 	return &o
 }
 
-func (r Request) Pay(orderId int, districtId int, price float64) bool {
+func (r Request) Pay(order orders.Order) bool {
 	message := map[string]interface{}{
-		"orderId":    orderId,
-		"districtID": districtId,
-		"price":      []map[string]interface{}{{"payment": "cash", "value": price}},
+		"orderId":    order.OrderID,
+		"districtID": order.DistrictID,
+		"price":      []map[string]interface{}{{"payment": "cash", "value": order.Price}},
 	}
 	jsonBody, err := json.Marshal(message)
 	if err != nil {
@@ -109,7 +110,7 @@ func (r Request) Pay(orderId int, districtId int, price float64) bool {
 	}
 
 	req, err := http.NewRequest(
-		r.Query, fmt.Sprintf("http://%s:%d/order", r.Host, r.Port), bytes.NewBuffer(jsonBody),
+		r.Query, fmt.Sprintf("http://%s:%d/pay", r.Host, r.Port), bytes.NewBuffer(jsonBody),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := r.Client.Do(req)
@@ -147,7 +148,7 @@ func (r Request) Click(entryId int, districtID int) string {
 	}
 
 	req, err := http.NewRequest(
-		r.Query, fmt.Sprintf("http://%s:%d/order", r.Host, r.Port), bytes.NewBuffer(jsonBody),
+		r.Query, fmt.Sprintf("http://%s:%d/click", r.Host, r.Port), bytes.NewBuffer(jsonBody),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := r.Client.Do(req)
@@ -172,8 +173,8 @@ func (r Request) Click(entryId int, districtID int) string {
 	return c.Status
 }
 
-func (r Request) Delivered(orderId int, districtID int) bool {
-	dv := DeliveryValue{orderId, districtID}
+func (r Request) Delivered(order orders.Order) bool {
+	dv := DeliveryValue{order.OrderID, order.DistrictID}
 
 	jsonBody, err := json.Marshal(dv)
 	if err != nil {
@@ -182,7 +183,7 @@ func (r Request) Delivered(orderId int, districtID int) bool {
 	}
 
 	req, err := http.NewRequest(
-		r.Query, fmt.Sprintf("http://%s:%d/order", r.Host, r.Port), bytes.NewBuffer(jsonBody),
+		r.Query, fmt.Sprintf("http://%s:%d/delivered", r.Host, r.Port), bytes.NewBuffer(jsonBody),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := r.Client.Do(req)
