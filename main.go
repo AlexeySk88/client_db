@@ -1,61 +1,76 @@
 package main
 
 import (
-	"client_db/config"
+	"client_db/orders"
 	"client_db/service"
 	"fmt"
 	"math/rand"
 	"net/http"
-	"os"
-	"strconv"
+	"sync"
 	"time"
 )
 
 var request service.Request
-var districts int
+
+const(
+	chunk = 500
+	count = 10000
+	districts = 5
+	//host      string = "dbs1.dc.pizzasoft.ru"
+	host      string = "localhost"
+	port      int    = 9000
+	query     string = "POST"
+)
 
 func main() {
-	config.Set()
+	wg := sync.WaitGroup{}
+	pipe := make(chan orders.Order, count)
 
-	c := http.Client{}
-	request = service.Request{
-		Client: c,
-	}
-	count := 1000000
-
-	dis, err := strconv.Atoi(os.Getenv("DISTRICTS"))
-	districts = dis
-	if err != nil {
-		fmt.Println(err)
-	}
 	start := time.Now()
-	ch := make(chan bool)
 	for i := 0; i < count; i++ {
-		rand.Seed(int64(i))
-		time.Sleep(5 * time.Millisecond)
-		go doRequest(request, districts, ch)
+		rand.Seed(time.Now().UnixNano())
+		order := orders.Order{
+			DistrictID: rand.Intn(districts) + 1,
+			Price:      float64(rand.Intn(20)*10 + 400),
+		}
+		pipe <- order
 	}
-	for i := 0; i < count; i++ {
-		<-ch
-		fmt.Println(i)
+
+	for i := 0; i < count/chunk; i++ {
+		wg.Add(chunk)
+		go doRequest(pipe, &wg)
+		wg.Wait()
 	}
+
 	fmt.Println("the number of orders -", count)
 	fmt.Println("success", time.Now().Sub(start))
 }
 
-func doRequest(request service.Request, districts int, ch chan bool) {
-	districtID := rand.Intn(districts) + 1
-	price := float64(rand.Intn(20)*10 + 400)
-	order := request.AddOrder(price, districtID)
-	request.Pay(order.Order_id, districtID, price)
-	for _, v := range order.Entry_id {
-		for {
-			click := request.Click(v, districtID)
-			if click == "done" {
-				break
+func doRequest(ch chan orders.Order, wg *sync.WaitGroup) {
+	c := http.Client{}
+	request = service.Request{
+		Client: c,
+		Host:   host,
+		Port:   port,
+		Query:  query,
+	}
+
+	for curOrder := range ch {
+		order := request.AddOrder(curOrder)
+		curOrder.OrderID = order.Order_id
+		curOrder.EntryIDs = order.Entry_id
+		fmt.Println(curOrder.OrderID)
+
+		request.Pay(curOrder)
+		for _, v := range order.Entry_id {
+			for {
+				click := request.Click(v, curOrder.DistrictID)
+				if click == "done" {
+					break
+				}
 			}
 		}
+		request.Delivered(curOrder)
+		wg.Done()
 	}
-	request.Delivered(order.Order_id, districtID)
-	ch <- true
 }
