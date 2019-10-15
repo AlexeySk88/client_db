@@ -13,40 +13,15 @@ import (
 var request service.Request
 
 const(
-	chunk = 500
+	chunk = 100
 	count = 10000
 	districts = 5
-	//host      string = "dbs1.dc.pizzasoft.ru"
 	host      string = "localhost"
 	port      int    = 9000
 	query     string = "POST"
 )
 
 func main() {
-	wg := sync.WaitGroup{}
-	pipe := make(chan orders.Order, count)
-
-	start := time.Now()
-	for i := 0; i < count; i++ {
-		rand.Seed(time.Now().UnixNano())
-		order := orders.Order{
-			DistrictID: rand.Intn(districts) + 1,
-			Price:      float64(rand.Intn(20)*10 + 400),
-		}
-		pipe <- order
-	}
-
-	for i := 0; i < count/chunk; i++ {
-		wg.Add(chunk)
-		go doRequest(pipe, &wg)
-		wg.Wait()
-	}
-
-	fmt.Println("the number of orders -", count)
-	fmt.Println("success", time.Now().Sub(start))
-}
-
-func doRequest(ch chan orders.Order, wg *sync.WaitGroup) {
 	c := http.Client{}
 	request = service.Request{
 		Client: c,
@@ -54,7 +29,33 @@ func doRequest(ch chan orders.Order, wg *sync.WaitGroup) {
 		Port:   port,
 		Query:  query,
 	}
+	wg := sync.WaitGroup{}
+	pipe := make(chan orders.Order, count)
 
+	start := time.Now()
+
+	for i := 0; i < chunk; i++ {
+
+		go doRequest(request, pipe, &wg)
+	}
+
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		rand.Seed(time.Now().UnixNano())
+		order := orders.Order{
+			DistrictID: rand.Intn(districts) + 1,
+			Price:      float64(rand.Intn(20)*10 + 400),
+		}
+		pipe <- order
+	}
+	wg.Wait()
+
+
+	fmt.Println("the number of orders -", count)
+	fmt.Println("success", time.Now().Sub(start))
+}
+
+func doRequest(request service.Request, ch chan orders.Order, wg *sync.WaitGroup) {
 	for curOrder := range ch {
 		order := request.AddOrder(curOrder)
 		curOrder.OrderID = order.Order_id
